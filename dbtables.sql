@@ -10,7 +10,9 @@ CREATE TABLE IF NOT EXISTS `tci_Character` (
   `userID` int(10) unsigned NOT NULL,
   `characterName` varchar(255) COLLATE utf8_unicode_ci DEFAULT NULL,
   `accessToken` varchar(255) COLLATE utf8_unicode_ci DEFAULT NULL,
+  `cacheTimer` int(10) unsigned DEFAULT NULL,
   `refreshToken` varchar(255) COLLATE utf8_unicode_ci DEFAULT NULL,
+  `contactCacheTimer` int(10) unsigned DEFAULT NULL,
   PRIMARY KEY (`characterID`),
   KEY `fk_character_userID` (`userID`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_unicode_ci;

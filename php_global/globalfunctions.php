@@ -21,6 +21,10 @@ function reverseFormat($input) {
 	return htmlspecialchars_decode($input,ENT_COMPAT);
 }
 
+function jsNameFormat($input) {
+	return str_replace("'","\'",$input);
+}
+
 /**************************************[LAYOUT GENERATION FUNCTIONS]**
 ** Functions used to generate the layout and handle redirects.
 *********************************************************************/
@@ -103,17 +107,26 @@ function displayErrorStatus($eStatus) {
 *********************************************************************/
 
 // Return Authorization Details from Login
-function getAuthorization($code) {
+function getAuthorization($code,$type = "new") {
 	$ch = curl_init();
 	curl_setopt($ch, CURLOPT_URL,"https://login.eveonline.com/oauth/token");
 	curl_setopt($ch, CURLOPT_POST, 1);
-	curl_setopt($ch, CURLOPT_POSTFIELDS, "grant_type=authorization_code&code=".$code);
+	if($type == "new") {
+		curl_setopt($ch, CURLOPT_POSTFIELDS, "grant_type=authorization_code&code=".$code);
+	} else {
+		curl_setopt($ch, CURLOPT_POSTFIELDS, "grant_type=refresh_token&refresh_token=".$code);
+	}
 	$b64 = "Basic ".AUTH_TOKEN;
 	curl_setopt($ch,CURLOPT_HTTPHEADER,array('Authorization: '.$b64,'Content-Type: application/x-www-form-urlencoded','Host: login.eveonline.com'));
 	curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
 	$serverOutput = curl_exec ($ch);
 	curl_close ($ch);
-	return json_decode($serverOutput);
+	$serverJSON = json_decode($serverOutput);
+	if(!isset($serverJSON->access_token) OR $serverJSON->access_token == null) {
+		return FALSE;
+	} else {
+		return $serverJSON;
+	}
 }
 
 // Return Character Info
@@ -125,25 +138,17 @@ function getCharacterInfo($accessToken) {
 	curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
 	$serverOutput = curl_exec ($ch);
 	curl_close ($ch);
-	return json_decode($serverOutput);
-}
-
-// Return Character Contact List
-function getContactList($characterID,$accessToken,$nextPage = FALSE) {
-	$ch = curl_init();
-	if($nextPage) {
-		curl_setopt($ch, CURLOPT_URL,$nextPage);
+	$serverJSON = json_decode($serverOutput);
+	if(!isset($serverJSON->CharacterID) OR $serverJSON->CharacterID == null) {
+		return FALSE;
 	} else {
-		curl_setopt($ch, CURLOPT_URL,"https://crest-tq.eveonline.com/characters/".$characterID."/contacts/");
+		return $serverJSON;
 	}
-	$auth = "Bearer ".$accessToken;
-	curl_setopt($ch,CURLOPT_HTTPHEADER,array('Authorization: '.$auth,'Host: crest-tq.eveonline.com'));
-	curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-	$serverOutput = curl_exec ($ch);
-	curl_close ($ch);
+
 	return json_decode($serverOutput);
 }
 
+// Refresh Character Token - If Expired, get a New Access Token
 function refreshCharacterToken($characterID) {
 	$checkQuery = $GLOBALS['dbh']->prepare("SELECT * FROM tci_Character WHERE (userID=:userID AND characterID=:characterID) LIMIT 1");
 	$checkQuery->execute(array(":userID" => $_SESSION['userID'],":characterID" => $characterID));
@@ -151,49 +156,70 @@ function refreshCharacterToken($characterID) {
 	if($checkQuery->rowCount() == 0) { return FALSE; }
 	$character = $checkQuery->fetch();
 
-	// Obtain New Auth Token
-	$ch = curl_init();
-	curl_setopt($ch, CURLOPT_URL,"https://login.eveonline.com/oauth/token");
-	curl_setopt($ch, CURLOPT_POST, 1);
-	curl_setopt($ch, CURLOPT_POSTFIELDS, "grant_type=refresh_token&refresh_token=".$character['refreshToken']);
-	$b64 = "Basic ".AUTH_TOKEN;
-	curl_setopt($ch,CURLOPT_HTTPHEADER,array('Authorization: '.$b64,'Content-Type: application/x-www-form-urlencoded','Host: login.eveonline.com'));
-	curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-	$serverOutput = curl_exec ($ch);
-	curl_close ($ch);
+	$authorization = getAuthorization($character['refreshToken'],"refresh");
+	if($authorization === FALSE OR !isset($authorization->refresh_token)) { return FALSE; }
 
-	$authorization = json_decode($serverOutput);
-	if(!isset($authorization->refresh_token)) { return FALSE; }
-
-	$updateQuery = $GLOBALS['dbh']->prepare("UPDATE tci_Character SET accessToken=:accessToken,refreshToken=:refreshToken WHERE (characterID=:characterID) LIMIT 1");
-	$updateQuery->execute(array(":accessToken" => $authorization->access_token,":refreshToken" => $authorization->refresh_token,":characterID" => $characterID));
+	$updateQuery = $GLOBALS['dbh']->prepare("UPDATE tci_Character SET accessToken=:accessToken,accessToken=:accessToken,cacheTimer=:cacheTimer,refreshToken=:refreshToken WHERE (characterID=:characterID) LIMIT 1");
+	$updateQuery->execute(array(":accessToken" => $authorization->access_token,":cacheTimer" => (time()+$authorization->expires_in-20),":refreshToken" => $authorization->refresh_token,":characterID" => $characterID));
 
 	return $authorization->access_token;
 }
 
-function addCharacterContact($characterID,$contactID,$accessToken,$charJSON) {
+// Contacts Management Function (Performs all four types of functions for the Character Contacts Root
+function manageContactList($characterID,$accessToken,$actionType,$sendInfo = FALSE) {
 	$ch = curl_init();
-	curl_setopt($ch, CURLOPT_URL,"https://crest-tq.eveonline.com/characters/".$characterID."/contacts/");
-	curl_setopt($ch, CURLOPT_POST, 1);
-	curl_setopt($ch, CURLOPT_POSTFIELDS, $charJSON);
+
+	$rootPath = "https://crest-tq.eveonline.com/characters/".$characterID."/contacts/";
 	$auth = "Bearer ".$accessToken;
-	curl_setopt($ch,CURLOPT_HTTPHEADER,array('Authorization: '.$auth,'Host: crest-tq.eveonline.com','Content-Type: application/json'));
+
+	switch($actionType) {
+		case "GET":
+			if($sendInfo) {
+				curl_setopt($ch, CURLOPT_URL,$sendInfo);
+			} else {
+				curl_setopt($ch, CURLOPT_URL,$rootPath);
+			}
+			curl_setopt($ch,CURLOPT_HTTPHEADER,array('Authorization: '.$auth,'Host: crest-tq.eveonline.com'));
+			break;
+		case "PUSH":
+			curl_setopt($ch, CURLOPT_POST, 1);
+			curl_setopt($ch, CURLOPT_POSTFIELDS, $sendInfo);
+			curl_setopt($ch, CURLOPT_URL,$rootPath);
+			curl_setopt($ch,CURLOPT_HTTPHEADER,array('Authorization: '.$auth,'Host: crest-tq.eveonline.com','Content-Type: application/json'));
+			break;
+		case "DELETE":
+			curl_setopt($ch, CURLOPT_CUSTOMREQUEST, "DELETE");
+			curl_setopt($ch, CURLOPT_URL,$rootPath.$sendInfo."/");
+			curl_setopt($ch,CURLOPT_HTTPHEADER,array('Authorization: '.$auth,'Host: crest-tq.eveonline.com'));
+			break;
+		default: return FALSE;
+	}
+
 	curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
 	$serverOutput = curl_exec ($ch);
 	curl_close ($ch);
-	return json_decode($serverOutput);
+
+	$serverJSON = json_decode($serverOutput);
+	if(isset($serverJSON->exceptionType) AND $serverJSON->exceptionType == "UnauthorizedError") { error(3,"Authentication Error. Nag the administrator to fix it."); return FALSE; }
+	if(isset($serverJSON->exceptionType) AND $serverJSON->exceptionType == "UnsupportedMediaTypeError") { error(3,"Bad JSON Error. Nag the administrator to fix it."); return FALSE; }
+	if(isset($serverJSON->exceptionType) AND $serverJSON->key == "ContactsAddFull") { error(3,"You have reached the Contact List cap of 1024 Contacts on that character. You must delete contacts in order to make room for more."); return FALSE; }
+
+	return $serverJSON;
 }
 
-function deleteCharacterContact($characterID,$contactID,$accessToken) {
+function searchCharacterAPI($contactName,$contactType) {
 	$ch = curl_init();
-	curl_setopt($ch, CURLOPT_URL,"https://crest-tq.eveonline.com/characters/".$characterID."/contacts/".$contactID."/");
-	$auth = "Bearer ".$accessToken;
-	curl_setopt($ch,CURLOPT_HTTPHEADER,array('Authorization: '.$auth,'Host: crest-tq.eveonline.com'));
-	curl_setopt($ch, CURLOPT_CUSTOMREQUEST, "DELETE");
+	curl_setopt($ch, CURLOPT_URL,"https://api.eveonline.com/eve/OwnerID.xml.aspx?names=".urlencode($contactName));
 	curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
 	$serverOutput = curl_exec ($ch);
 	curl_close ($ch);
-	return json_decode($serverOutput);
+	$serverXML = simplexml_load_string($serverOutput);
+	if(!isset($serverXML->result->rowset->row)) { return FALSE; }
+	if(($contactType == "Character" AND $serverXML->result->rowset->row['ownerGroupID'] == "1") OR ($contactType == "Corporation" AND $serverXML->result->rowset->row['ownerGroupID'] == "2") OR ($contactType == "Alliance" AND $serverXML->result->rowset->row['ownerGroupID'] == "32")) {
+		return $serverXML->result->rowset->row['ownerID'];
+	}
+	return FALSE;
 }
+
 
 ?>

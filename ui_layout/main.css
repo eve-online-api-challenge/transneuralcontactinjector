@@ -357,3 +357,55 @@ div.divButtonNavDisabled {
 	background-color: #DEDEDE;
 	color: #BCBCBC; 
 	cursor: default; }
+
+/*********************************************************************
+** Edit Box Formats
+*********************************************************************/
+
+.editBox {
+	top:40%;
+	left:40%;
+	width:20%; }
+
+.editBoxWindowBackground {
+	position:fixed;
+	opacity: 0;
+	background-color: #000000;
+	z-index: 2;
+	top:0px;
+	left:0px;
+	width:100%;
+	height:100%; }
+	
+.editBoxWindowForeground {
+	position:fixed;
+	margin: 10px;
+	padding: 5px;
+	border: 1px #000000 solid;
+	background-color: #EEEEEE;
+	color: #000000;
+	border-radius: 3px;
+	overflow-y: auto; 
+	font-family: Arial; 
+	font-size: 9pt; }
+	
+.editBoxDivDisplay {
+	display: block; 
+	z-index: 5;
+	visibility: visible; }
+
+.editBoxDivHide {
+	display: none;
+	z-index: 0;
+	visibility: hidden; }
+	
+.backgroundDivDisplay {
+	display: block; 
+	z-index: 2;
+	visibility: visible; }
+
+.backgroundDivHide {
+	display: none;
+	z-index: 0;
+	visibility: hidden; }
+	

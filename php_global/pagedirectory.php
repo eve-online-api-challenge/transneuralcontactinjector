@@ -11,6 +11,7 @@ switch($p) {
 
 	// Modules
 	case "evelogin": require_once("php_modules/evelogin.php"); break;
+	case "backup_contacts": require_once("php_modules/backup_contacts.php"); break;
 
 	// Pages
 	case "merger": require_once("php_pages/merger.php"); $layoutType = 1; break;
