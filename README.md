@@ -16,17 +16,16 @@ automatically copies the primary capsuleer's contacts to the other registered co
 destination capsuleer's contacts and replaces with the primary capsuleer's contacts.
 
 Because of the timeframe given for the API Challenge, some liberties have been taken with the coding to meet the deadline. 
-Necessary features to complete this tool include:
-- Establishing best practice for connecting to CREST and using paths.
-- Tracking cache timers and only calling refresh tokens when necessary.
-- Making the copy operation more efficient and have failsafes due to CREST rate limiting / server-side issues.
---- If a contact exists already in two capsuleers, no point in deleting and adding.
 
-Upcoming features to enhance this tool include:
+Since initial submissionm, some of the planned features were coded in:
 - Fine grain control of contacts- the ability to add/edit/delete single contacts.
 - Backup / Restore contacts- the ability to download contacts in a CSV and restore if needed. 
 --- (this feature could be fantastic for Corp Leaders distributing required contacts to members)
-- Finer control over the merge operation: Merge only Alliances, Corps, or Characters (or any combination)
-- Combine contacts operation (Merge two or more contact lists instead of replacing one with primary).
 
->> In theory this same functionality can be applied to Fittings and some consideration of that will be made.
+The feature around finer control for merges and combines will not be programmed: reason being is that the CSV import (restore contacts) function implements this and gives the user more direct control as they can edit their CSV locally.
+
+Necessary features to complete this tool (and clean up the code) include:
+- Establishing best practice for connecting to CREST and using paths.
+- Tracking cache timers and only calling refresh tokens when necessary. [Implemented]
+- Making the copy operation more efficient and have failsafes due to CREST rate limiting / server-side issues.
+--- If a contact exists already in two capsuleers, no point in deleting and adding.
